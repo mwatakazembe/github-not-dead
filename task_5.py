@@ -1,7 +1,14 @@
-n = int(input("enter num: "))
+number = int(input("enter num (under 1000): "))
 
-if n % 7 == 0:
+if number % 7 == 0:
     print("magick number!")
 else:
-    sum = sum(int(d) for d in str(abs(n)))
-    print(f"sum of numbers = {sum}")
+    n = abs(number)
+    
+    d1 = n // 100
+    d2 = (n // 10) % 10
+    d3 = n % 10
+
+    digitSum = d1 + d2 + d3
+    
+    print("sum of digits: " + str(digitSum))
