@@ -1,9 +1,14 @@
 str = input("Enter string: ")
-checking = "aeiou"
-res = ""
 
-for char in str:
-    if char.lower() not in checking:
-        res += char
+str = str.replace('a', '')
+str = str.replace('A', '')
+str = str.replace('e', '')
+str = str.replace('E', '')
+str = str.replace('i', '')
+str = str.replace('I', '')
+str = str.replace('o', '')
+str = str.replace('O', '')
+str = str.replace('u', '')
+str = str.replace('U', '')
 
-print(res)
+print(str)
