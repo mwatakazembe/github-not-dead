@@ -1,14 +1,21 @@
-IP = input("enter IP: ")
-parts = IP.split(".")
+ip = input("input IP: ")
+parts = ip.split('.')
 
-correct = True
-if len(parts) == 4:
-    for part in parts:
-        num = int(part)
-        if num < 0 or num > 255:
-            correct = False
-            break
+if len(parts) != 4:
+    print("correct")
 else:
-    correct = False
-
-print("correct" if correct else "incorrect")
+    correct = True
+    
+    if not parts[0].isdigit() or int(parts[0]) < 0 or int(parts[0]) > 255 or (len(parts[0]) > 1 and parts[0][0] == '0'):
+        correct = False
+    
+    elif not parts[1].isdigit() or int(parts[1]) < 0 or int(parts[1]) > 255 or (len(parts[1]) > 1 and parts[1][0] == '0'):
+        correct = False
+    
+    elif not parts[2].isdigit() or int(parts[2]) < 0 or int(parts[2]) > 255 or (len(parts[2]) > 1 and parts[2][0] == '0'):
+        correct = False
+    
+    elif not parts[3].isdigit() or int(parts[3]) < 0 or int(parts[3]) > 255 or (len(parts[3]) > 1 and parts[3][0] == '0'):
+        correct = False
+    
+    print("correct" if correct else "incorrect")

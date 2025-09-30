@@ -1,4 +1,3 @@
-# Константы тарифного плана
 BASE_PRICE = 24.99
 INCL_MIN = 60
 INCL_SMS = 30
