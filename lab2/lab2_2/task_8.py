@@ -16,7 +16,6 @@ def example_function(n):
     total = 0
     for i in range(n):
         total += i
-    time.sleep(1.5)  
     return total
 
 print("=== examples ===")
