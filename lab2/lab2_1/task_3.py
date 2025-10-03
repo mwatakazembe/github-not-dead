@@ -12,7 +12,9 @@ else:
     second = numbers[1]
     
     if second > first:
-        first, second = second, first
+        t = first      
+        first = second  
+        second = t
     
     for i in range(2, len(numbers)):
         num = numbers[i]
