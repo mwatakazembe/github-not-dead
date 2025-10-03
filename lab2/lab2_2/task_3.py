@@ -1,4 +1,4 @@
-from datetime import datetime
+import datetime
 
 def log_calls(filename):
     def decorator(func):

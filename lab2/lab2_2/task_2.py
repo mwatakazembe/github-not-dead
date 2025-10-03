@@ -1,25 +1,18 @@
-def merge_dicts(dict_a, dict_b):
-    for key in dict_b:
-        if key not in dict_a:
-            dict_a[key] = dict_b[key]
+def merge_dicts(a, b):
+    for key in b:
+        if key in a:
+            if isinstance(a[key], dict) and isinstance(b[key], dict):
+                merge_dicts(a[key], b[key])
+            elif isinstance(a[key], list) and isinstance(b[key], list):
+                a[key].extend(b[key])
+            elif isinstance(a[key], set) and isinstance(b[key], set):
+                a[key].update(b[key])
+            elif isinstance(a[key], tuple) and isinstance(b[key], tuple):
+                a[key] = a[key] + b[key]
+            else:
+                a[key] = b[key]
         else:
-            merge_values(dict_a, key, dict_b[key])
-
-def merge_values(dict_a, key, value_b):
-    value_a = dict_a[key]
-    
-    if type(value_a) == type({}) and type(value_b) == type({}):
-        merge_dicts(value_a, value_b)
-    elif type(value_a) == type([]) and type(value_b) == type([]):
-        for item in value_b:
-            value_a.append(item)
-    elif type(value_a) == type(set()) and type(value_b) == type(set()):
-        for item in value_b:
-            value_a.add(item)
-    elif type(value_a) == type(()) and type(value_b) == type(()):
-        dict_a[key] = value_a + value_b
-    else:
-        dict_a[key] = value_b
+            a[key] = b[key]
 
 
 dict_a = {"a": 1, "b": {"c": 1, "f": 4}}
