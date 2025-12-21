@@ -1,149 +1,207 @@
 import requests
 from bs4 import BeautifulSoup
 import csv
-import argparse
 import time
+import sys
 import os
+import argparse
 import re
+from urllib.parse import quote
 
-class CountryDataScraper:
-    def init(self, cache_dir='cache'):
-        self.cache_dir = cache_dir
-        if not os.path.exists(cache_dir):
-            os.makedirs(cache_dir)
+def setup_cache_directory():
+    cache_path = 'wiki_cache'
+    if not os.path.exists(cache_path):
+        os.makedirs(cache_path)
+    return cache_path
+
+def retrieve_page(country_name):
+    normalized_name = country_name.replace(' ', '_').replace('/', '_')
+    cache_file_path = f"wiki_cache/{normalized_name}.html"
     
-    def get_cache_filename(self, country):
-        safe_name = re.sub(r'[^\w\s-]', '', country).strip().lower()
-        safe_name = re.sub(r'[-\s]+', '_', safe_name)
-        return os.path.join(self.cache_dir, f"{safe_name}.html")
+    if os.path.isfile(cache_file_path):
+        with open(cache_file_path, 'r', encoding='utf-8') as file:
+            return file.read()
     
-    def fetch_page(self, country):
-        cache_file = self.get_cache_filename(country)
-        
-        if os.path.exists(cache_file):
-            print(f"using cache for {country}")
-            with open(cache_file, 'r', encoding='utf-8') as f:
-                return f.read()
-        
-        url = f"https://en.wikipedia.org/wiki/{country.replace(' ', '_')}"
-        headers = {
-            'user-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        
-        try:
-            print(f"downloading page for {country}")
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-            
-            with open(cache_file, 'w', encoding='utf-8') as f:
-                f.write(response.text)
-            
-            return response.text
-            
-        except requests.RequestException as e:
-            print(f"error downloading page for {country}: {e}")
-            return None
+    safe_name = quote(country_name.replace(' ', '_'))
+    target_url = f"https://en.wikipedia.org/wiki/{safe_name}"
     
-    def parse_number(self, text):
-        if not text:
-            return None
-        cleaned = re.sub(r'[^\d]', '', text)
-        try:
-            return int(cleaned) if cleaned else None
-        except ValueError:
-            return None
+    request_headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }
     
-    def extract_data(self, html, country):
-        if not html:
-            return {'country': country, 'capital': None, 'area': None, 'population': None}
+    try:
+        page_response = requests.get(target_url, headers=request_headers)
+        page_response.raise_for_status()
         
-        soup = BeautifulSoup(html, 'html.parser')
-        data = {'country': country, 'capital': None, 'area': None, 'population': None}
+        page_content = page_response.text
         
-        try:
-            capital_th = soup.find('th', string=re.compile('capital', re.I))
-            if capital_th:
-                capital_td = capital_th.find_next('td')
-                if capital_td:
-                    capital_link = capital_td.find('a')
-                    data['capital'] = capital_link.get_text(strip=True) if capital_link else capital_td.get_text(strip=True)
-            
-            area_th = soup.find('th', string=re.compile(r'Area\s*•\s*Total', re.I))
-            if not area_th:
-                area_th = soup.find('th', string=re.compile('total area', re.I))
-            if not area_th:
-                area_th = soup.find('th', string=re.compile('area', re.I))
-            
-            if area_th:
-                area_td = area_th.find_next('td')
-                if area_td:
-                    area_text = area_td.get_text(strip=True)
-                    km_match = re.search(r'(\d[\d,]*)\s*km²', area_text)
-                    if km_match:
-                        data['area'] = self.parse_number(km_match.group(1))
-            
-            population_th = soup.find('th', string=re.compile('population', re.I))
-            if population_th:
-                population_td = population_th.find_next('td')
-                if population_td:
-                    population_text = population_td.get_text(strip=True)
-                    numbers = re.findall(r'\d[\d,]*', population_text)
-                    if numbers:
-                        data['population'] = self.parse_number(numbers[-1])
-                        
-        except Exception as e:
-            print(f"error parsing data for {country}: {e}")
+        with open(cache_file_path, 'w', encoding='utf-8') as file:
+            file.write(page_content)
         
-        return data
+        time.sleep(1.5)
+        return page_content
+        
+    except Exception as error:
+        print(f"Failed to retrieve page for {country_name}: {error}")
+        return None
+
+def sanitize_numeric_value(input_string):
+    if not input_string:
+        return ""
+    digits_only = re.sub(r'[^\d]', '', str(input_string))
+    return digits_only if digits_only else ""
+
+def locate_demographic_info(info_table):
+    for table_row in info_table.find_all('tr'):
+        header_cell = table_row.find('th')
+        if header_cell:
+            header_content = header_cell.get_text().strip().lower()
+            if 'population' in header_content:
+                data_cell = table_row.find('td')
+                if data_cell:
+                    cell_text = data_cell.get_text()
+                    numeric_patterns = re.findall(r'\d{1,3}(?:,\d{3})*', cell_text)
+                    if numeric_patterns:
+                        largest_value = max(numeric_patterns, key=lambda val: len(val.replace(',', '')))
+                        clean_value = sanitize_numeric_value(largest_value)
+                        return clean_value
+
+    for table_row in info_table.find_all('tr'):
+        header_cell = table_row.find('th')
+        data_cell = table_row.find('td')
+        if header_cell and data_cell:
+            header_text = header_cell.get_text().strip().lower()
+            cell_text = data_cell.get_text()
+            if any(term in header_text for term in ['estimate', 'census']):
+                if any(str(year) in cell_text for year in range(2020, 2025)):
+                    numeric_patterns = re.findall(r'\d{1,3}(?:,\d{3})*', cell_text)
+                    if numeric_patterns:
+                        largest_value = max(numeric_patterns, key=lambda val: len(val.replace(',', '')))
+                        clean_value = sanitize_numeric_value(largest_value)
+                        return clean_value
+
+    demographics_section = info_table.find('th', string=re.compile('.*Demographics.*', re.IGNORECASE))
+    if demographics_section:
+        following_rows = demographics_section.find_parent('tr').find_next_siblings('tr')
+        for row in following_rows[:6]:
+            data_cell = row.find('td')
+            if data_cell:
+                cell_text = data_cell.get_text()
+                numeric_patterns = re.findall(r'\d{1,3}(?:,\d{3})*', cell_text)
+                if numeric_patterns:
+                    largest_value = max(numeric_patterns, key=lambda val: len(val.replace(',', '')))
+                    clean_value = sanitize_numeric_value(largest_value)
+                    return clean_value
+
+    candidate_numbers = []
+    for data_cell in info_table.find_all('td'):
+        cell_text = data_cell.get_text()
+        numeric_patterns = re.findall(r'\d{1,3}(?:,\d{3})*', cell_text)
+        for pattern in numeric_patterns:
+            cleaned_pattern = sanitize_numeric_value(pattern)
+            if cleaned_pattern:
+                candidate_numbers.append(cleaned_pattern)
     
-    def process_countries(self, input_file, output_file):
+    if candidate_numbers:
+        return max(candidate_numbers, key=len)
+
+    return ""
+
+def extract_country_details(page_html, country_name):
+    if not page_html:
+        return None
+    
+    document_tree = BeautifulSoup(page_html, 'html.parser')
+    info_panel = document_tree.find('table', {'class': re.compile('infobox.*')})
+    
+    if not info_panel:
+        return {'country': country_name, 'capital': '', 'area': '', 'population': ''}
+    
+    result = {'country': country_name, 'capital': '', 'area': '', 'population': ''}
+    
+    try:
+        for row in info_panel.find_all('tr'):
+            header_element = row.find('th')
+            if header_element:
+                header_text = header_element.get_text().strip().lower()
+                if 'capital' in header_text:
+                    data_element = row.find('td')
+                    if data_element:
+                        capital_element = data_element.find('a')
+                        if capital_element:
+                            result['capital'] = capital_element.get_text().strip()
+                            break
+
+        for row in info_panel.find_all('tr'):
+            header_element = row.find('th')
+            if header_element:
+                header_text = header_element.get_text().strip().lower()
+                if 'area' in header_text or 'total' in header_text:
+                    data_element = row.find('td')
+                    if data_element:
+                        area_text_content = data_element.get_text()
+                        area_match_result = re.search(r'(\d[\d,.]*)\s*(?:km|sq)', area_text_content)
+                        if area_match_result:
+                            result['area'] = sanitize_numeric_value(area_match_result.group(1))
+                            break
+
+        result['population'] = locate_demographic_info(info_panel)
+
+    except Exception as error_message:
+        print(f"Error parsing details for '{country_name}': {error_message}")
+        return None
+
+    return result
+
+def read_country_list(filename):
+    possible_encodings = ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']
+    
+    for encoding_type in possible_encodings:
         try:
-            with open(input_file, 'r', encoding='utf-8') as f:
-                countries = [line.strip() for line in f if line.strip()]
-        except FileNotFoundError:
-            print(f"input file {input_file} not found")
-            return
-        except Exception as e:
-            print(f"error reading file {input_file}: {e}")
-            return
+            with open(filename, 'r', encoding=encoding_type) as file:
+                countries = [line.strip() for line in file if line.strip()]
+            if countries:
+                return countries
+        except UnicodeDecodeError:
+            continue
+    
+    print(f"Unable to read {filename} with supported encodings")
+    return []
+
+def process_country_data(input_filename, output_filename):
+    setup_cache_directory()
+    
+    country_list = read_country_list(input_filename)
+    if not country_list:
+        return
+    
+    collected_results = []
+    
+    for index, country in enumerate(country_list, 1):
+        print(f"Processing {index}/{len(country_list)}: {country}")
         
-        if not countries:
-            print("country list file is empty")
-            return
+        page_content = retrieve_page(country)
+        country_data = extract_country_details(page_content, country)
         
-        results = []
-        for i, country in enumerate(countries, 1):
-            print(f"processing {country} ({i}/{len(countries)})...")
-            
-            html = self.fetch_page(country)
-            data = self.extract_data(html, country)
-            results.append(data)
-            
-            time.sleep(1)
-        
-        try:
-            with open(output_file, 'w', newline='', encoding='utf-8') as f:
-                writer = csv.DictWriter(f, fieldnames=['country', 'capital', 'area', 'population'])
-                writer.writeheader()
-                writer.writerows(results)
-            
-            print(f"data saved to {output_file}")
-            print(f"processed countries: {len(results)} out of {len(countries)}")
-            
-            success_count = sum(1 for r in results if r['capital'] or r['area'] or r['population'])
-            print(f"successfully retrieved data for {success_count} countries")
-            
-        except Exception as e:
-            print(f"error saving to CSV: {e}")
+        if country_data:
+            collected_results.append(country_data)
+    
+    with open(output_filename, 'w', newline='', encoding='utf-8') as file:
+        field_names = ['country', 'capital', 'area', 'population']
+        csv_writer = csv.DictWriter(file, fieldnames=field_names)
+        csv_writer.writeheader()
+        csv_writer.writerows(collected_results)
+    
+    print(f"Results saved to {output_filename}")
 
 def main():
-    parser = argparse.ArgumentParser(description='collect country data from Wikipedia')
-    parser.add_argument('-i', '--input', default='countries.txt', 
-                       help='input file with country list (default: countries.txt)')
-    parser.add_argument('-o', '--output', default='countries_data.csv',
-                       help='output CSV file (default: countries_data.csv)')
+    argument_parser = argparse.ArgumentParser(description='Extract country information from Wikipedia')
+    argument_parser.add_argument('-i', '--input', default='countries.txt', help='Input text file with country names')
+    argument_parser.add_argument('-o', '--output', default='countries_data.csv', help='Output CSV file for results')
     
-    args = parser.parse_args()
+    parsed_args = argument_parser.parse_args()
     
-    scraper = CountryDataScraper()
-    scraper.process_countries(args.input, args.output)
+    process_country_data(parsed_args.input, parsed_args.output)
+
+if __name__ == "__main__":
+    main()
